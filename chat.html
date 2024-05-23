@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newcomer Assistant</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: url('background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+        }
+        .message-container {
+            margin-bottom: 20px;
+            overflow-y: auto;
+            max-height: 500px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .message {
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+            max-width: 70%;
+            position: relative;
+        }
+        .message.bot {
+            background-color: #7b32a8;
+            color: #fff;
+        }
+        .message.user {
+            background-color: #33a8a0;
+            color: #fff;
+            margin-left: auto;
+            margin-right: 0;
+            text-align: right;
+        }
+        .avatar {
+            width: 30px;
+            height: 30px;
+            background-image: url('https://upload.wikimedia.org/wikipedia/en/thumb/c/c4/Charlotte_Hornets_%282014%29.svg/440px-Charlotte_Hornets_%282014%29.svg.png');
+            background-size: cover;
+            background-repeat: no-repeat;
+            border-radius: 50%;
+            position: absolute;
+            bottom: -15px;
+            left: -40px;
+        }
+        .avatar:before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background-color: #fff;
+            border-radius: 50%;
+            position: absolute;
+            bottom: -2px;
+            left: -2px;
+        }
+        .message.user .avatar {
+            left: auto;
+            right: -40px;
+        }
+        .message.user .avatar:before {
+            left: auto;
+            right: -2px;
+        }
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            color: #fff;
+        }
+        .typing-indicator div {
+            width: 8px;
+            height: 8px;
+            background-color: #fff;
+            border-radius: 50%;
+            margin: 0 2px;
+            animation: typing 1s infinite;
+        }
+        @keyframes typing {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.5); }
+            100% { transform: scale(1); }
+        }
+        .typing-indicator div:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+        .typing-indicator div:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+        input[type="text"], input[type="button"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        input[type="button"] {
+            background-color: #7b32a8;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        input[type="button"]:hover {
+            background-color: #33a8a0;
+        }
+        .response-container {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: #fff;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Newcomer Assistant</h1>
+        <div class="message-container" id="messageContainer"></div>
+        <input type="text" id="userInput" placeholder="Type your message...">
+        <input type="button" value="Send Message" onclick="sendMessage()">
+        <input type="button" value="I'm Ready to Find My Neighborhood Match" onclick="sendConversationLog()">
+        <div class="response-container" id="responseContainer"></div>
+    </div>
+
+    <script>
+        let userId;
+
+        window.onload = function() {
+            resetConversation();
+        };
+
+        function generateUserId() {
+            return 'user_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        async function query(data, url) {
+            console.log("Querying API with data:", JSON.stringify(data));
+            showTypingIndicator();
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': 'Bearer f39536ea-6cd4-4afe-ac99-bd9babd2cd21',
+                        'Content-Type': 'application/json'
+                    },
+                    method: "POST",
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    let errorDetail = 'Unknown error';
+                    try {
+                        const errorResponse = await response.json();
+                        errorDetail = errorResponse.detail || JSON.stringify(errorResponse);
+                    } catch (jsonError) {
+                        console.error('Failed to parse error response as JSON:', jsonError);
+                        errorDetail = await response.text();
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}, detail: ${errorDetail}`);
+                }
+                
+                const result = await response.json();
+                console.log("API Response:", result);
+                return result;
+            } catch (error) {
+                console.error("Error during API call:", error);
+                return { outputs: { 'out-0': `Error during API call: ${error.message}` } };
+            } finally {
+                hideTypingIndicator();
+            }
+        }
+    
+        const messageContainer = document.getElementById("messageContainer");
+        const userInput = document.getElementById("userInput");
+        const responseContainer = document.getElementById("responseContainer");
+    
+        function appendMessage(message, sender) {
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add("message");
+            messageDiv.innerHTML = message;
+            if (sender === "bot") {
+                messageDiv.classList.add("bot");
+                const avatarDiv = document.createElement("div");
+                avatarDiv.classList.add("avatar");
+                messageDiv.appendChild(avatarDiv);
+            } else if (sender === "user") {
+                messageDiv.classList.add("user");
+            }
+            messageContainer.appendChild(messageDiv);
+            // Scroll to the bottom of the container
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+    
+        // Define a global variable to store the conversation log
+        let conversationLog = [];
+    
+        // Function to append a message to the conversation log
+        function appendToLog(message, sender) {
+            conversationLog.push({ message, sender });
+        }
+    
+        async function sendMessage() {
+            const userMessage = userInput.value.trim();
+            if (userMessage !== "") {
+                appendMessage(userMessage, "user");
+                // Append user message to the conversation log
+                appendToLog(userMessage, "user");
+                userInput.value = ""; // Clear the input field
+                const response = await query({"in-0": userMessage, "user_id": userId}, "https://api.stack-ai.com/inference/v0/run/ac522f2a-ccb2-4608-8bab-3e1ccf74af42/663905242c2e38e8a381736b");
+                console.log(response); // Log the entire response object
+                const botMessage = response?.outputs?.['out-0'] || "Sorry, I couldn't understand that.";
+                appendMessage(botMessage, "bot");
+                // Append bot message to the conversation log
+                appendToLog(botMessage, "bot");
+            }
+        }
+    
+        async function sendConversationLog() {
+            // Create a formatted string of the conversation log
+            const logString = conversationLog.map(entry => `${entry.sender}: ${entry.message}`).join('\n');
+            console.log("Formatted Conversation Log:", logString); // Log the formatted conversation log
+    
+            // Prepare the input for the API
+            const apiInput = {
+                "in-0": logString,
+                "user_id": userId
+            };
+            console.log("API Input to Scoring Model:", JSON.stringify(apiInput)); // Print the input to the scoring model
+    
+            // Call the scoring model API with the correct endpoint
+            const apiResponse = await query(apiInput, "https://api.stack-ai.com/inference/v0/run/ac522f2a-ccb2-4608-8bab-3e1ccf74af42/663b8b5178d943c1cd118d55");
+            console.log("Scoring Model API Response:", apiResponse); // Log the response from the API
+    
+            // Display the API response in the response container
+            displayResponse(apiResponse.outputs['out-0']);
+        }
+    
+        function displayResponse(response) {
+            responseContainer.innerHTML = response.replace(/\n/g, '<br>');
+        }
+
+        function resetConversation() {
+            conversationLog = [];
+            messageContainer.innerHTML = '';
+            responseContainer.innerHTML = '';
+            userId = generateUserId(); // Generate a new user ID for each session
+            console.log("New session started with User ID:", userId); // Log the new user ID
+            startNewSession();
+        }
+
+        function startNewSession() {
+            appendMessage("Welcome to Charlotte! My name is AI Bot and I am an assistant built to help you find your perfect neighborhood in Charlotte and answer any questions you may have. To get started let me know what you are looking for in a neighborhood?", "bot");
+        }
+
+        function showTypingIndicator() {
+            const typingIndicator = document.createElement("div");
+            typingIndicator.classList.add("message", "bot");
+            typingIndicator.id = "typingIndicator";
+            typingIndicator.innerHTML = `
+                <div class="avatar"></div>
+                <div class="typing-indicator">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                </div>
+            `;
+            messageContainer.appendChild(typingIndicator);
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById("typingIndicator");
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+    
+        // Focus on the input field when the page loads
+        userInput.focus();
+    
+        // Handle Enter key press
+        userInput.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+    </script>
+    
+</body>
+</html>
